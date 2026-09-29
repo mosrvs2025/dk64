@@ -5,9 +5,7 @@ const matCache = new Map();
 export function mat(color, opts = {}) {
   const key = color + JSON.stringify(opts);
   if (!matCache.has(key)) {
-    matCache.set(key, opts.basic
-      ? new THREE.MeshBasicMaterial({ color, ...opts, basic: undefined })
-      : new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts }));
+    matCache.set(key, new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.78, metalness: 0, ...opts }));
   }
   return matCache.get(key);
 }
@@ -30,8 +28,10 @@ export function makeHero() {
   const head = new THREE.Group(); head.position.set(0, 1.7, 0.05); body.add(head);
   head.add(part(sph(0.45, 12), fur, 0, 0, 0));
   const face = part(sph(0.34, 10), skin, 0, -0.05, 0.25); face.scale.set(1.1, 0.85, 0.7); head.add(face);
-  head.add(part(sph(0.08, 6), 0x111111, -0.14, 0.1, 0.42));
-  head.add(part(sph(0.08, 6), 0x111111, 0.14, 0.1, 0.42));
+  for (const sx of [-0.14, 0.14]) {
+    head.add(part(sph(0.12, 8), 0xffffff, sx, 0.1, 0.36, { roughness: 0.3 }));
+    head.add(part(sph(0.065, 6), 0x1a0e06, sx, 0.11, 0.46, { roughness: 0.2 }));
+  }
   head.add(part(box(0.62, 0.1, 0.12), 0x5a3418, 0, 0.2, 0.38));
   const tie = part(box(0.22, 0.34, 0.08), 0xd8242a, 0, 1.35, 0.52); tie.rotation.x = 0.25; body.add(tie);
   const armGeo = cyl(0.17, 0.2, 0.9);
@@ -129,10 +129,10 @@ export function makeCritterFrog() {
 
 export function makeRelic() {
   const g = new THREE.Group();
-  const gold = { emissive: 0x7a5a00 };
+  const gold = { emissive: 0xffa010, emissiveIntensity: 0.9, metalness: 0.7, roughness: 0.25 };
   const core = part(new THREE.OctahedronGeometry(0.7), 0xffd23a, 0, 0, 0, gold); g.add(core);
   const ring = part(new THREE.TorusGeometry(1.0, 0.1, 6, 20), 0xffe98a, 0, 0, 0, gold); g.add(ring);
-  const glow = new THREE.Mesh(sph(1.4, 10), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.18, depthWrite: false }));
+  const glow = new THREE.Mesh(sph(1.4, 10), new THREE.MeshBasicMaterial({ color: 0xffd040, transparent: true, opacity: 0.12, depthWrite: false, blending: THREE.AdditiveBlending }));
   g.add(glow);
   g.userData = { ring, core };
   return g;
@@ -193,7 +193,7 @@ export function makeCheckpoint() {
 
 export function makeGrapplePoint() {
   const g = new THREE.Group();
-  const ring = part(new THREE.TorusGeometry(0.6, 0.14, 6, 16), 0x3ad8ff, 0, 0, 0, { emissive: 0x0a5a8a });
+  const ring = part(new THREE.TorusGeometry(0.6, 0.14, 6, 16), 0x3ad8ff, 0, 0, 0, { emissive: 0x2ad8ff, emissiveIntensity: 1.4 });
   g.add(ring);
   g.add(part(sph(0.22, 8), 0xffffff, 0, 0, 0, { emissive: 0x4a8aaa }));
   g.userData = { ring };
@@ -220,7 +220,7 @@ export function makeBoss() {
 
 export function makeCrown() {
   const g = new THREE.Group();
-  const gold = { emissive: 0x8a6a00 };
+  const gold = { emissive: 0xffa010, emissiveIntensity: 0.9, metalness: 0.7, roughness: 0.25 };
   g.add(part(cyl(1.2, 1.0, 0.8, 10), 0xffd23a, 0, 0, 0, gold));
   for (let i = 0; i < 6; i++) {
     const a = (i / 6) * Math.PI * 2;

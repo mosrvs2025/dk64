@@ -7,6 +7,7 @@ import { buildWorld } from './world.js';
 import { Player } from './player.js';
 import { Throwable, Grunt, Spitter, Roller, CritterFrog, Boss, Projectile } from './entities.js';
 import { makeBlueprint, makeDNA, mat } from './models.js';
+import { createComposer, makeEnvironment, Grass, Ambient, SKY, SUN_DIR, shared } from './gfx.js';
 import { SPIRE, VOLCANO, tunnelInfo, surfaceH, OCEAN_R, H } from './terrain.js';
 
 window.__errors = [];
@@ -14,43 +15,58 @@ addEventListener('error', (e) => window.__errors.push(String(e.message)));
 
 const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad/i.test(navigator.userAgent);
 const params = new URLSearchParams(location.search);
-let qualityHigh = params.get('q') ? params.get('q') !== 'low' : !mobile;
+const TIERS = ['low', 'medium', 'high'];
+let tier = TIERS.includes(params.get('q')) ? params.get('q') : (mobile ? 'medium' : 'high');
 const quality = {
-  terrainSeg: mobile ? 300 : 420,
-  trees: mobile ? 420 : 850,
+  terrainSeg: mobile ? 320 : 440,
+  trees: mobile ? 480 : 950,
+  flora: mobile ? 500 : 1400,
+  grass: { low: 0, medium: 5500, high: 16000 },
 };
 
 // ---------------- Renderer ----------------
 const canvas = document.getElementById('c');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: !mobile, powerPreference: 'high-performance' });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
-function applyQuality() {
-  renderer.setPixelRatio(Math.min(devicePixelRatio, qualityHigh ? 2 : 1));
-  sun.castShadow = qualityHigh || !mobile;
-  document.getElementById('qualityBtn').textContent = 'Quality: ' + (qualityHigh ? 'High' : 'Low');
-}
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xcfe9ff, 140, 720);
-const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.3, 3000);
+scene.fog = new THREE.Fog(SKY.horizon.clone(), 120, 700);
+scene.environment = makeEnvironment(renderer);
+scene.environmentIntensity = 0.8;
+const camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.3, 4000);
+
+const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x6a5a40, 1.1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xffe2b0, 3.2);
+const sc = sun.shadow.camera; sc.left = -50; sc.right = 50; sc.top = 50; sc.bottom = -50; sc.near = 1; sc.far = 260;
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04; sun.shadow.radius = 3;
+scene.add(sun, sun.target);
+
+let composer = null, grass = null;
+function applyQuality() {
+  const hi = tier === 'high', lo = tier === 'low';
+  renderer.setPixelRatio(Math.min(devicePixelRatio, hi ? 2 : lo ? 1 : 1.5));
+  sun.castShadow = !lo;
+  const ms = hi ? 2048 : 1024;
+  if (sun.shadow.mapSize.x !== ms) { sun.shadow.mapSize.set(ms, ms); sun.shadow.map?.dispose(); sun.shadow.map = null; }
+  if (composer) { composer.dispose?.(); composer = null; }
+  if (!lo) composer = createComposer(renderer, scene, camera, tier);
+  if (grass) { grass.mesh.visible = !lo; grass.count = quality.grass[tier] || 1; grass.radius = Math.sqrt(grass.count) * 0.62; grass.cx = 1e9; }
+  resize();
+  const btn = document.getElementById('qualityBtn');
+  if (btn) btn.textContent = 'Quality: ' + tier[0].toUpperCase() + tier.slice(1);
+}
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  composer?.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.fov = innerWidth < innerHeight ? 75 : 62;
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
-
-const hemi = new THREE.HemisphereLight(0xcfe9ff, 0x5a4a3a, 1.35);
-scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff0d0, 2.1);
-sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
-const sc = sun.shadow.camera; sc.left = -45; sc.right = 45; sc.top = 45; sc.bottom = -45; sc.near = 1; sc.far = 220;
-sun.shadow.bias = -0.0008;
-scene.add(sun, sun.target);
-applyQuality();
-resize();
 
 // ---------------- Game context ----------------
 const G = {
@@ -63,6 +79,9 @@ G.fx = new Particles(scene);
 const input = new Input(canvas);
 
 buildWorld(G, quality);
+grass = new Grass(scene, quality.grass.high);
+const ambient = new Ambient(scene, mobile ? 70 : 140);
+applyQuality();
 const L = G.level;
 G.player = new Player(G);
 const player = G.player;
@@ -85,7 +104,7 @@ G.spawnProjectile = (x, y, z, vx, vy, vz) => {
 
 // coins (instanced)
 const coinGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.12, 14); coinGeo.rotateX(Math.PI / 2);
-const coinIM = new THREE.InstancedMesh(coinGeo, mat(0xffc81a, { emissive: 0x6a4a00 }), L.coins.length);
+const coinIM = new THREE.InstancedMesh(coinGeo, mat(0xffc81a, { emissive: 0xffa000, emissiveIntensity: 0.55, metalness: 0.8, roughness: 0.3 }), L.coins.length);
 coinIM.castShadow = true; scene.add(coinIM);
 L.coins.forEach((c) => { c.taken = false; c.phase = Math.random() * 6; });
 const _m = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(1, 1, 1), _up = new THREE.Vector3(0, 1, 0);
@@ -413,7 +432,7 @@ document.getElementById('resumeBtn').onclick = resume;
 document.getElementById('shopClose').onclick = resume;
 document.getElementById('winClose').onclick = resume;
 document.getElementById('restartBtn').onclick = () => location.reload();
-document.getElementById('qualityBtn').onclick = () => { qualityHigh = !qualityHigh; applyQuality(); };
+document.getElementById('qualityBtn').onclick = () => { tier = TIERS[(TIERS.indexOf(tier) + 1) % 3]; applyQuality(); };
 document.getElementById('muteBtn').onclick = (e) => { G.sfx.muted = !G.sfx.muted; e.target.textContent = 'Sound: ' + (G.sfx.muted ? 'Off' : 'On'); };
 document.getElementById('buyDJ').onclick = () => {
   if (player.coins >= 60 && !player.has.djump) { player.coins -= 60; player.has.djump = true; G.sfx.play('buy'); G.hud.toast('DOUBLE JUMP! Press jump again in mid-air.', 3); }
@@ -474,7 +493,7 @@ function updateCamera(dt) {
   const floor = H(camera.position.x, camera.position.z) + 0.6;
   if (camera.position.y < floor) camera.position.y = floor;
   camera.lookAt(cam.tx, cam.ty, cam.tz);
-  sun.position.set(player.x + 50, player.y + 80, player.z + 30);
+  sun.position.set(player.x + SUN_DIR.x * 120, player.y + SUN_DIR.y * 120, player.z + SUN_DIR.z * 120);
   sun.target.position.set(player.x, player.y, player.z);
   G.sky.position.copy(camera.position);
 }
@@ -535,7 +554,7 @@ function frame(now) {
   fpsAcc += raw; fpsN++;
   if (fpsAcc > 1) { G.fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
   step(dt);
-  renderer.render(scene, camera);
+  if (composer) composer.render(); else renderer.render(scene, camera);
 }
 function step(dt) {
   input.poll();
@@ -573,6 +592,9 @@ function step(dt) {
   if (input.pressed.interact && it) it.act();
   collect(dt);
   for (const a of L.animated) a(G.time);
+  shared.time.value = G.time;
+  if (grass && tier !== 'low') grass.update(player.x, player.z);
+  ambient.update(G.time, player.x, player.y, player.z);
   G.fx.update(dt);
   updateCamera(dt);
   updateGrappleTarget();

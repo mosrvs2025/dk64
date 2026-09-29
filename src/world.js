@@ -1,6 +1,7 @@
 // Builds the island: terrain, water, lava, props, colliders, and all placements.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { createSky, terrainMaterial, heightTexture, createWaterMaterial, createLavaMaterial, windify, scatterFlora, shared } from './gfx.js';
 import {
   H, surfaceH, buildTerrainMesh, LAGOON, ROCK, VOLCANO, SPIRE, PLATEAU_Y, OCEAN_R, SEA_LEVEL,
   TUNNEL, tunnelPoint, tunnelFloor, SECRET_PIT, ISLET, fbm, smooth, tunnelInfo, isLagoon,
@@ -20,49 +21,31 @@ export function buildWorld(G, quality) {
   G.level = L;
 
   // ---------- Sky ----------
-  const skyGeo = new THREE.SphereGeometry(1400, 24, 12);
-  const skyCols = [];
-  const top = new THREE.Color(0x3a8ae0), hor = new THREE.Color(0xcfe9ff), c = new THREE.Color();
-  for (let i = 0; i < skyGeo.attributes.position.count; i++) {
-    const y = skyGeo.attributes.position.getY(i) / 1400;
-    c.copy(hor).lerp(top, Math.pow(Math.max(0, y), 0.6));
-    skyCols.push(c.r, c.g, c.b);
-  }
-  skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyCols, 3));
-  const sky = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false }));
-  scene.add(sky); G.sky = sky;
-  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x888888, fog: false });
-  const cloudGeos = [];
-  const cm = new THREE.Matrix4(), cq = new THREE.Quaternion(), cp = new THREE.Vector3(), cs = new THREE.Vector3();
-  for (let i = 0; i < 26; i++) {
-    const a = Math.random() * Math.PI * 2, r = 250 + Math.random() * 600;
-    const cx = Math.cos(a) * r, cy = 140 + Math.random() * 80, cz = Math.sin(a) * r, rot = Math.random() * 3;
-    for (let j = 0; j < 4; j++) {
-      const rad = 12 + Math.random() * 10;
-      const lx = j * 16 - 24, lz = Math.random() * 10;
-      cp.set(cx + Math.cos(rot) * lx + Math.sin(rot) * lz, cy + Math.random() * 5, cz - Math.sin(rot) * lx + Math.cos(rot) * lz);
-      cm.compose(cp, cq, cs.set(rad, rad * 0.5, rad));
-      cloudGeos.push(new THREE.SphereGeometry(1, 8, 6).applyMatrix4(cm));
-    }
-  }
-  scene.add(new THREE.Mesh(mergeGeometries(cloudGeos), cloudMat));
+  G.sky = createSky(scene);
 
   // ---------- Terrain ----------
   const terrain = buildTerrainMesh(quality.terrainSeg);
+  terrain.material = terrainMaterial();
   scene.add(terrain);
 
   // ---------- Water & lava ----------
-  const waterMat = new THREE.MeshLambertMaterial({ color: 0x2a9ad8, transparent: true, opacity: 0.72, emissive: 0x0a3050 });
-  const lag = new THREE.Mesh(new THREE.CircleGeometry(LAGOON.r + 6, 40), waterMat);
+  const hTex = heightTexture();
+  const mkWater = (level) => {
+    const m = createWaterMaterial(hTex, level);
+    m.uniforms.uTime = shared.time; m.uniforms.uH.value = hTex;
+    return m;
+  };
+  const lag = new THREE.Mesh(new THREE.CircleGeometry(LAGOON.r + 6, 64), mkWater(LAGOON.water));
   lag.rotation.x = -Math.PI / 2; lag.position.set(LAGOON.x, LAGOON.water, LAGOON.z); scene.add(lag);
-  const ocean = new THREE.Mesh(new THREE.RingGeometry(OCEAN_R - 40, 1600, 64, 1), waterMat);
+  const ocean = new THREE.Mesh(new THREE.RingGeometry(OCEAN_R - 50, 1800, 128, 24), mkWater(SEA_LEVEL));
   ocean.rotation.x = -Math.PI / 2; ocean.position.y = SEA_LEVEL; scene.add(ocean);
-  const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff5a1a });
-  const lava = new THREE.Mesh(new THREE.CircleGeometry(60, 48), lavaMat);
+  const lavaMat = createLavaMaterial();
+  lavaMat.uniforms.uTime = shared.time;
+  const lava = new THREE.Mesh(new THREE.CircleGeometry(60, 64), lavaMat);
   lava.rotation.x = -Math.PI / 2; lava.position.set(VOLCANO.x, VOLCANO.lava, VOLCANO.z); scene.add(lava);
-  L.animated.push((t) => { lavaMat.color.setHSL(0.04 + Math.sin(t * 1.5) * 0.015, 1, 0.5 + Math.sin(t * 2.3) * 0.05); waterMat.opacity = 0.7 + Math.sin(t) * 0.04; });
-  const lavaLight = new THREE.PointLight(0xff6a2a, 3, 120, 1.2);
-  lavaLight.position.set(VOLCANO.x, 12, VOLCANO.z); scene.add(lavaLight);
+  const lavaLight = new THREE.PointLight(0xff6a2a, 250, 170, 1.5);
+  lavaLight.position.set(VOLCANO.x, 22, VOLCANO.z); scene.add(lavaLight);
+  L.animated.push((t) => { lavaLight.intensity = 250 + Math.sin(t * 2.1) * 35 + Math.sin(t * 5.3) * 15; });
 
   // ---------- Helpers ----------
   const boxGeo = new THREE.BoxGeometry(1, 1, 1);
@@ -129,9 +112,34 @@ export function buildWorld(G, quality) {
   const enemy = (type, x, z, extra = {}) => L.enemies.push({ type, x, z, ...extra });
 
   // ---------- Trees & rocks ----------
-  const trunkGeo = new THREE.CylinderGeometry(0.45, 0.7, 1, 6); trunkGeo.translate(0, 0.5, 0);
-  const leafGeo = new THREE.IcosahedronGeometry(1, 0);
-  const palmLeafGeo = new THREE.ConeGeometry(1, 0.6, 7);
+  const trunkGeo = new THREE.CylinderGeometry(0.35, 0.7, 1, 7, 3); trunkGeo.translate(0, 0.5, 0);
+  { // gentle bend in trunks
+    const p = trunkGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setX(i, p.getX(i) + Math.sin(y * 2.2) * 0.12); }
+    trunkGeo.computeVertexNormals();
+  }
+  // broadleaf canopy: several lumpy blobs merged into one mesh
+  const canopyParts = [];
+  for (const [x, y, z, r] of [[0, 0, 0, 1], [0.75, -0.25, 0.3, 0.72], [-0.7, -0.2, -0.25, 0.75], [0.1, 0.45, -0.55, 0.65], [-0.2, -0.35, 0.75, 0.6]]) {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const k = 1 + (Math.sin(p.getX(i) * 7 + p.getY(i) * 5) * 0.08);
+      p.setXYZ(i, p.getX(i) * k + x, p.getY(i) * k * 0.85 + y, p.getZ(i) * k + z);
+    }
+    canopyParts.push(g.index ? g.toNonIndexed() : g);
+  }
+  const leafGeo = mergeGeometries(canopyParts); leafGeo.computeVertexNormals();
+  // palm fronds
+  const frondParts = [];
+  for (let i = 0; i < 7; i++) {
+    const f = new THREE.PlaneGeometry(0.5, 2.6, 1, 4);
+    const p = f.attributes.position;
+    for (let k = 0; k < p.count; k++) { const yy = p.getY(k) + 1.3; p.setY(k, yy); p.setZ(k, -yy * yy * 0.12); p.setX(k, p.getX(k) * (1 - yy / 3)); }
+    f.rotateX(-Math.PI / 2 + 0.35); f.rotateY((i / 7) * Math.PI * 2);
+    frondParts.push(f);
+  }
+  const palmLeafGeo = mergeGeometries(frondParts); palmLeafGeo.computeVertexNormals();
   const trees = [];
   const rng = mulberry(7);
   function okTree(x, z) {
@@ -158,38 +166,41 @@ export function buildWorld(G, quality) {
     const beach = H(x, z) < 1.2 && Math.hypot(x, z) > 180;
     trees.push({ x, z, s: 0.8 + rng() * 0.8 + jungle * 0.6, palm: beach || (!plateau && rng() < 0.15 && jungle < 0.5), plateau });
   }
-  const trunkIM = new THREE.InstancedMesh(trunkGeo, mat(0x7a5230), trees.length);
-  const leafIM = new THREE.InstancedMesh(leafGeo, mat(0x3a9a3a), trees.length * 2);
-  trunkIM.castShadow = leafIM.castShadow = true;
+  const trunkIM = new THREE.InstancedMesh(trunkGeo, new THREE.MeshStandardMaterial({ color: 0x6a4428, roughness: 1, flatShading: true }), trees.length);
+  const leafMat = windify(new THREE.MeshStandardMaterial({ roughness: 0.8, flatShading: true }), { strength: 0.25, heightScale: 0.5 });
+  const nPalm = trees.filter((t) => t.palm).length;
+  const leafIM = new THREE.InstancedMesh(leafGeo, leafMat, trees.length - nPalm);
+  const palmIM = new THREE.InstancedMesh(palmLeafGeo, windify(new THREE.MeshStandardMaterial({ color: 0x5ab83a, roughness: 0.7, side: THREE.DoubleSide }), { strength: 0.5, heightScale: 0.6 }), Math.max(1, nPalm));
+  trunkIM.castShadow = leafIM.castShadow = palmIM.castShadow = true;
+  trunkIM.receiveShadow = leafIM.receiveShadow = true;
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s3 = new THREE.Vector3();
   const lc = new THREE.Color();
+  let li = 0, pi = 0;
   trees.forEach((t, i) => {
     const y = H(t.x, t.z) - 0.3;
     const hgt = (t.palm ? 7 : 6) * t.s;
-    m4.compose(v.set(t.x, y, t.z), q.setFromAxisAngle(v.clone().set(0, 1, 0), i), s3.set(t.s, hgt, t.s));
+    const tq = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), i * 2.4);
+    m4.compose(v.set(t.x, y, t.z), tq, s3.set(t.s, hgt, t.s));
     trunkIM.setMatrixAt(i, m4);
     if (t.palm) {
-      m4.compose(v.set(t.x, y + hgt, t.z), q.identity(), s3.set(3.2 * t.s, 1.2 * t.s, 3.2 * t.s));
-      leafIM.setMatrixAt(i * 2, m4);
-      m4.makeScale(0, 0, 0); leafIM.setMatrixAt(i * 2 + 1, m4);
-      leafIM.setColorAt(i * 2, lc.set(0x5ab83a));
-      leafIM.setColorAt(i * 2 + 1, lc);
+      m4.compose(v.set(t.x + Math.sin(hgt * 2.2) * 0.12 * t.s, y + hgt, t.z), tq, s3.set(1.6 * t.s, 1.3 * t.s, 1.6 * t.s));
+      palmIM.setMatrixAt(pi++, m4);
     } else {
-      m4.compose(v.set(t.x, y + hgt, t.z), q.setFromAxisAngle(v.clone().set(0.3, 1, 0).normalize(), i), s3.set(2.8 * t.s, 2.4 * t.s, 2.8 * t.s));
-      leafIM.setMatrixAt(i * 2, m4);
-      m4.compose(v.set(t.x + 0.8, y + hgt * 0.75, t.z - 0.5), q, s3.set(2 * t.s, 1.8 * t.s, 2 * t.s));
-      leafIM.setMatrixAt(i * 2 + 1, m4);
-      const base = t.plateau ? 0x8ab84a : (t.x < -60 ? 0x1f7a3a : 0x4aaa3a);
-      lc.set(base).offsetHSL((rng() - 0.5) * 0.04, 0, (rng() - 0.5) * 0.1);
-      leafIM.setColorAt(i * 2, lc); leafIM.setColorAt(i * 2 + 1, lc);
+      const cs = t.s * (t.x < -60 ? 3.1 : 2.6);
+      m4.compose(v.set(t.x, y + hgt + cs * 0.2, t.z), tq, s3.set(cs, cs, cs));
+      leafIM.setMatrixAt(li, m4);
+      const base = t.plateau ? 0x9ab84a : (t.x < -60 ? 0x1f7a34 : 0x4aa83a);
+      lc.set(base).offsetHSL((rng() - 0.5) * 0.05, (rng() - 0.5) * 0.1, (rng() - 0.5) * 0.12);
+      leafIM.setColorAt(li++, lc);
     }
     world.cylinders.push({ x: t.x, z: t.z, r: 0.55 * t.s, y0: y, y1: y + hgt, active: true });
   });
-  scene.add(trunkIM, leafIM);
-  void palmLeafGeo;
+  scene.add(trunkIM, leafIM, palmIM);
+  scatterFlora(scene, quality.flora, rng, okTree);
 
   const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-  const rockIM = new THREE.InstancedMesh(rockGeo, mat(0x8a8276), 120);
+  const rockIM = new THREE.InstancedMesh(rockGeo, new THREE.MeshStandardMaterial({ color: 0x8a8276, roughness: 0.95, flatShading: true }), 120);
+  rockIM.receiveShadow = true;
   rockIM.castShadow = true;
   let rc = 0;
   for (let i = 0; i < 600 && rc < 120; i++) {
@@ -535,7 +546,7 @@ export function buildWorld(G, quality) {
     scene.remove(m);
   }
   const merged = mergeGeometries(geos);
-  const mm = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
+  const mm = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 }));
   mm.castShadow = true; mm.receiveShadow = true;
   scene.add(mm);
 
