@@ -7,6 +7,7 @@ import { buildWorld } from './world.js';
 import { Player } from './player.js';
 import { Throwable, Grunt, Spitter, Roller, CritterFrog, Boss, Projectile } from './entities.js';
 import { makeBlueprint, makeDNA, mat } from './models.js';
+import { saveGame, loadGame, clearSave, drawMap } from './save.js';
 import { createComposer, makeEnvironment, Grass, Ambient, SKY, SUN_DIR, shared } from './gfx.js';
 import { SPIRE, VOLCANO, tunnelInfo, surfaceH, OCEAN_R, H } from './terrain.js';
 
@@ -251,6 +252,17 @@ G.onFrogAbsorbed = (f) => {
   dnaDrops.push({ x: f.x, y: f.y + 1.2, z: f.z, mesh: d, taken: false, t: 0 });
 };
 
+G.setCheckpoint = (cp, silent) => {
+  if (G.checkpoint) { G.checkpoint.active = false; G.checkpoint.mesh.userData.flag.material = mat(0x888888); }
+  G.checkpoint = cp; cp.active = true;
+  cp.mesh.userData.flag.material = mat(0xffd23a, { emissive: 0xffa000, emissiveIntensity: 0.6 });
+  if (silent) return;
+  G.sfx.play('check'); G.hud.toast(`Checkpoint: ${cp.name}`, 1.6);
+  player.hp = player.maxHp;
+  G.save();
+};
+G.save = () => saveGame(G);
+
 // ---------------- Pickups & triggers ----------------
 function collect(dt) {
   const px = player.x, py = player.y + 0.9, pz = player.z;
@@ -282,6 +294,7 @@ function collect(dt) {
       G.hud.pop('relics');
       player.hp = player.maxHp;
       checkBarrier();
+      G.save();
     }
   }
   // blueprint
@@ -291,7 +304,10 @@ function collect(dt) {
     if (near(b, 1.8)) {
       b.taken = true; bp.visible = false; player.has.grapple = true;
       G.sfx.play('big'); G.fx.burst(b.x, b.y, b.z, 0x3ad8ff, 40, 10, 0.4, 1.2);
-      G.hud.toast('🪝 GRAPPLE HOOK! Aim at a blue ring and press <b>X / Right-click / 🪝</b>.', 5);
+      G.hookT = G.time; G.save();
+      const tr = L.tutorialRing;
+      cam.yaw = Math.atan2(-(tr.x - player.x), -(tr.z - player.z)); cam.pitch = 0.05;
+      G.hud.toast('🪝 <b>GRAPPLE HOOK!</b> See the glowing ring on the pillar? Face it and press <b>' + (input.usedTouch ? 'the 🪝 button' : 'X / Right-click') + '</b>. Blue beams mark every ring on the island.', 7);
     }
   }
   // dna
@@ -304,6 +320,7 @@ function collect(dt) {
       G.sfx.play(player.dna >= 3 ? 'big' : 'relic'); G.hud.pop('dna');
       if (player.dna >= 3) G.hud.toast('🐸 FROG FORM UNLOCKED! Press <b>Q / 🐸</b> to transform. Frogs jump HUGE and have a long tongue.', 5);
       else G.hud.toast(`🧬 Frog DNA absorbed (${player.dna}/3)`, 2);
+      G.save();
     }
   }
   // chests
@@ -315,18 +332,13 @@ function collect(dt) {
       G.sfx.play('secret'); G.fx.burst(c.x, c.y + 1, c.z, 0xffd23a, 30, 8, 0.25, 1);
       G.hud.toast(`🗝️ SECRET FOUND! +10 coins (${player.secrets}/${L.chests.length})`, 2.5);
       G.hud.pop('secrets');
+      G.save();
     }
   }
   // checkpoints
   for (const cp of L.checkpoints) {
     if (Math.hypot(cp.x - px, cp.z - pz) < 2.6 && Math.abs(cp.y - player.y) < 3) {
-      if (G.checkpoint !== cp) {
-        if (G.checkpoint) { G.checkpoint.active = false; G.checkpoint.mesh.userData.flag.material = mat(0x888888); }
-        G.checkpoint = cp; cp.active = true;
-        cp.mesh.userData.flag.material = mat(0xffd23a, { emissive: 0x5a4a00 });
-        G.sfx.play('check'); G.hud.toast(`Checkpoint: ${cp.name}`, 1.6);
-        player.hp = player.maxHp;
-      }
+      if (G.checkpoint !== cp) G.setCheckpoint(cp);
     }
     cp.mesh.userData.flag.rotation.y = Math.sin(t * 3 + cp.x) * 0.2;
   }
@@ -352,7 +364,7 @@ function collect(dt) {
     }
     if (all) {
       L.gate.open = true; L.gate.box.active = false;
-      G.sfx.play('secret'); G.hud.toast('The vault gate grinds open!', 2.5); G.shake(0.4);
+      G.sfx.play('secret'); G.hud.toast('The vault gate grinds open!', 2.5); G.shake(0.4); G.save();
     }
   }
   if (L.gate && L.gate.open && L.gate.mesh.position.y > L.gate.y0 - 3.5) L.gate.mesh.position.y -= dt * 3;
@@ -375,6 +387,7 @@ function win() {
   const mins = Math.floor(G.time / 60), secs = Math.floor(G.time % 60);
   document.getElementById('winStats').innerHTML =
     `<p>Time: <b>${mins}:${String(secs).padStart(2, '0')}</b><br/>Relics: <b>${player.relics}/12</b> · Secrets: <b>${player.secrets}/${L.chests.length}</b> · Coins: <b>${player.coins}</b></p>`;
+  G.save();
   setTimeout(() => { showOverlay('win'); }, 1200);
 }
 
@@ -418,6 +431,7 @@ function showOverlay(id) {
     document.getElementById('pauseStats').innerHTML =
       `<p>Relics ${player.relics}/12 · Secrets ${player.secrets}/${L.chests.length} · Coins ${player.coins} · DNA ${player.dna}/3</p>` +
       `<p style="font-size:14px;opacity:.8">Relics break the Spire seal at 8. Checkpoint: ${G.checkpoint.name}</p>`;
+    drawMap(document.getElementById('map'), G);
   }
 }
 function openShop() { refreshShop(); showOverlay('shop'); }
@@ -431,18 +445,19 @@ document.getElementById('startBtn').onclick = () => { started = true; G.sfx.unlo
 document.getElementById('resumeBtn').onclick = resume;
 document.getElementById('shopClose').onclick = resume;
 document.getElementById('winClose').onclick = resume;
-document.getElementById('restartBtn').onclick = () => location.reload();
+document.getElementById('restartBtn').onclick = () => { clearSave(); location.reload(); };
+document.getElementById('newGameBtn').onclick = () => { clearSave(); location.reload(); };
 document.getElementById('qualityBtn').onclick = () => { tier = TIERS[(TIERS.indexOf(tier) + 1) % 3]; applyQuality(); };
 document.getElementById('muteBtn').onclick = (e) => { G.sfx.muted = !G.sfx.muted; e.target.textContent = 'Sound: ' + (G.sfx.muted ? 'Off' : 'On'); };
 document.getElementById('buyDJ').onclick = () => {
   if (player.coins >= 60 && !player.has.djump) { player.coins -= 60; player.has.djump = true; G.sfx.play('buy'); G.hud.toast('DOUBLE JUMP! Press jump again in mid-air.', 3); }
   else G.sfx.play('deny');
-  refreshShop();
+  refreshShop(); G.save();
 };
 document.getElementById('buyHeart').onclick = () => {
   if (player.coins >= 40 && player.maxHp < 8) { player.coins -= 40; player.maxHp++; player.hp = player.maxHp; G.sfx.play('buy'); }
   else G.sfx.play('deny');
-  refreshShop();
+  refreshShop(); G.save();
 };
 document.addEventListener('pointerlockchange', () => {
   if (!document.pointerLockElement && started && !paused && !input.usedTouch) showOverlay('pause');
@@ -500,34 +515,57 @@ function updateCamera(dt) {
 
 // ---------------- Grapple targeting ----------------
 const _fwd = new THREE.Vector3(), _to = new THREE.Vector3(), _proj = new THREE.Vector3();
+const _hf = new THREE.Vector3();
 function updateGrappleTarget() {
   G.grappleTarget = null; G.grappleTargetAny = null;
   camera.getWorldDirection(_fwd);
+  _hf.set(_fwd.x, 0, _fwd.z).normalize();
+  const has = player.has.grapple;
   const cands = [];
+  let nearest = null, nd = 1e9;
+  const pulse = 1 + Math.sin(G.time * 5) * 0.12;
   for (const gp of L.grapples) {
     if (gp.requires === 'spire' && L.barrier.cyl.active) { gp.mesh.visible = false; continue; }
     const dx = gp.x - player.x, dy = gp.y - (player.y + 1), dz = gp.z - player.z;
     const d = Math.hypot(dx, dy, dz);
-    gp.mesh.visible = d < 200;
+    gp.mesh.visible = d < 260;
     gp.mesh.userData.ring.rotation.y = G.time * 2;
-    if (d > 36 || d < 2.5 || dy < -3) continue;
+    gp.mesh.scale.setScalar(has ? pulse * (d > 30 ? 1.4 : 1) : 1);
+    gp.beam.visible = has && d > 10;
+    if (d < nd && dy > -3) { nd = d; nearest = gp; }
+    if (d > 38 || d < 2.5 || dy < -3) continue;
     if (gp === player.lastGrapple && d < 7) continue;
-    _to.set(gp.x - camera.position.x, gp.y - camera.position.y, gp.z - camera.position.z).normalize();
-    const dot = _to.dot(_fwd);
-    if (dot < 0.72) continue;
-    cands.push({ gp, score: dot * 2 - d / 36 + Math.max(0, dy) * 0.03 });
+    const hl = Math.hypot(dx, dz);
+    const hdot = hl < 3 ? 1 : (dx * _hf.x + dz * _hf.z) / hl; // facing check ignores height
+    if (hdot < 0.4) continue;
+    cands.push({ gp, score: hdot * 2 - d / 38 + Math.max(0, dy) * 0.02 });
   }
   cands.sort((a, b) => b.score - a.score);
-  for (const c of cands.slice(0, 3)) {
+  for (const c of cands.slice(0, 4)) {
     const gp = c.gp;
     const free = G.world.rayFree(player.x, player.y + 1.5, player.z, gp.x, gp.y, gp.z);
     if (free > 0.9) { G.grappleTargetAny = gp; break; }
   }
-  if (player.has.grapple && G.grappleTargetAny && !player.grapple) G.grappleTarget = G.grappleTargetAny;
+  if (has && G.grappleTargetAny && !player.grapple) G.grappleTarget = G.grappleTargetAny;
+  document.getElementById('btnSpec').classList.toggle('hot', !!G.grappleTarget);
   if (G.grappleTarget) {
     _proj.set(G.grappleTarget.x, G.grappleTarget.y, G.grappleTarget.z).project(camera);
     G.hud.reticle((_proj.x + 1) / 2 * innerWidth, (1 - _proj.y) / 2 * innerHeight, true);
   } else G.hud.reticle(0, 0, false);
+  // guide arrow to the nearest ring (shown for a while after unlocking, and whenever one is close)
+  const guide = has && !G.grappleTarget && !player.grapple && nearest && (G.time - (G.hookT ?? -999) < 150 || nd < 45);
+  G.hud.ringArrow(guide ? arrowFor(nearest) : null);
+}
+function arrowFor(gp) {
+  _proj.set(gp.x, gp.y, gp.z).project(camera);
+  const behind = _proj.z > 1;
+  let x = _proj.x, y = _proj.y;
+  if (behind) { x = -x; y = -y; }
+  const on = !behind && Math.abs(x) < 0.9 && Math.abs(y) < 0.85;
+  if (on) return { x: (x + 1) / 2 * innerWidth, y: (1 - y) / 2 * innerHeight - 40, on: true, rot: 0 };
+  const m = Math.max(Math.abs(x) / 0.88, Math.abs(y) / 0.8);
+  x /= m; y /= m;
+  return { x: (x + 1) / 2 * innerWidth, y: (1 - y) / 2 * innerHeight, on: false, rot: Math.atan2(-y, x) };
 }
 
 // ---------------- Zones ----------------
@@ -543,6 +581,29 @@ function zoneName() {
   return 'KONG VILLAGE';
 }
 let zoneCur = 'KONG VILLAGE', zoneCand = zoneCur, zoneT = 0;
+
+// ---------------- Juice ----------------
+let dustT = 0, wasWet = false, sparkT = 0;
+function juice(dt) {
+  const sp = Math.hypot(player.vx, player.vz);
+  dustT -= dt;
+  if (player.grounded && sp > 11 && dustT <= 0 && !player.swimming) {
+    dustT = 0.06;
+    G.fx.burst(player.x - player.vx * 0.03, player.y + 0.1, player.z - player.vz * 0.03, H(player.x, player.z) > 12 ? 0xd8c8a0 : 0xc8b890, 2, 1.5, 0.3, 0.45, 2);
+  }
+  const wet = player.swimming;
+  if (wet && !wasWet) { G.fx.burst(player.x, player.y + 0.8, player.z, 0xbfefff, 26, 7, 0.28, 0.7); G.sfx.play('splash'); }
+  if (wet && sp > 3 && Math.random() < 0.3) G.fx.burst(player.x, player.y + 0.9, player.z, 0xdff6ff, 1, 2, 0.2, 0.4);
+  wasWet = wet;
+  sparkT -= dt;
+  if (sparkT <= 0) {
+    sparkT = 0.12;
+    for (const r of L.relics) {
+      if (r.taken || r.hidden || Math.abs(r.x - player.x) + Math.abs(r.z - player.z) > 60) continue;
+      G.fx.burst(r.x + (Math.random() - 0.5) * 1.6, r.y + (Math.random() - 0.5) * 1.6, r.z + (Math.random() - 0.5) * 1.6, 0xffe680, 1, 0.8, 0.14, 0.9, -1);
+    }
+  }
+}
 
 // ---------------- Loop ----------------
 let last = performance.now();
@@ -563,6 +624,7 @@ function step(dt) {
     else if (!paused) showOverlay('pause');
   }
   if (paused) { updateCamera(0); return; }
+  if (G.hitStop > 0) { G.hitStop -= dt; updateCamera(dt); G.fx.update(dt); return; }
   G.time += dt;
   const sub = dt > 1 / 45 ? 2 : 1;
   const h = dt / sub;
@@ -591,6 +653,7 @@ function step(dt) {
   G.hud.prompt(it ? it.text.replace('[E]', input.usedTouch ? '[USE]' : '[E]') : '');
   if (input.pressed.interact && it) it.act();
   collect(dt);
+  juice(dt);
   for (const a of L.animated) a(G.time);
   shared.time.value = G.time;
   if (grass && tier !== 'low') grass.update(player.x, player.z);
@@ -631,6 +694,12 @@ window.game = {
 };
 
 document.getElementById('loading').remove();
+if (!params.has('fresh') && loadGame(G, bp)) {
+  document.getElementById('startBtn').textContent = 'CONTINUE';
+  document.getElementById('newGameBtn').hidden = false;
+  cam.tx = player.x; cam.tz = player.z; cam.ty = player.y;
+}
+setInterval(() => { if (started && !paused && !player.dead) G.save(); }, 15000);
 showOverlay('title');
 if (params.has('autostart')) window.game.start();
 requestAnimationFrame(frame);

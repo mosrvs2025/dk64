@@ -63,6 +63,9 @@ URL flags: `?q=low` forces low quality, `?autostart` skips the title screen.
 - **Physics playground:** you can lift, stack and throw crates. TNT has a fuse and explodes when it lands, and its blast launches you into the air. There are pressure plates and breakable floors.
 - **Puzzles with several solutions.** The *Stubborn Pillar* can be solved with a crate staircase, Frog form, the Grapple, a TNT launch, or Double Jump. The *Cracked Floor* breaks with a ground pound or TNT. The *Vault* opens with weights on the plates, or you can hop the wall as a frog. The *Lagoon Needle* works with Frog, Grapple, TNT or crates.
 - **Checkpoints**, a HUD, pause, a shop, a victory screen, WebAudio sound effects, and a quality toggle.
+- **Autosave:** your progress is saved in the browser, and the title screen offers Continue or New game. The pause menu has an **island map** showing the Relics still out there, checkpoints and grapple rings.
+- **Hook training:** grabbing the Grapple blueprint turns the camera toward a ring right next to the altar, with a coin trail and a secret chest on top. After that, every ring has a light beam, and an arrow points to the nearest one.
+- **Look:** a rigged, animated Kong, a shader sky, water with shoreline foam, flowing lava, wind-blown grass and trees, bloom and color grading. Low/Medium/High quality settings keep phones smooth.
 
 ## Tech
 

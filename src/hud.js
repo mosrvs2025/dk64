@@ -6,7 +6,7 @@ export class Hud {
     this.el = {
       hearts: $('hearts'), coins: $('coins'), relics: $('relics'), dna: $('dna'), secrets: $('secrets'),
       toast: $('toast'), prompt: $('prompt'), boss: $('boss'), bossName: $('bossName'), bossFill: $('bossFill'),
-      reticle: $('reticle'), abilities: $('abilities'), zone: $('zone'), btnUse: $('btnUse'), btnForm: $('btnForm'),
+      reticle: $('reticle'), ringArrow: $('ringArrow'), abilities: $('abilities'), zone: $('zone'), btnUse: $('btnUse'), btnForm: $('btnForm'),
     };
     this.toastT = 0; this.zoneT = 0; this.last = {};
   }
@@ -55,6 +55,13 @@ export class Hud {
   boss(show, name, frac) {
     this.el.boss.style.display = show ? 'block' : 'none';
     if (show) { this.el.bossName.textContent = name; this.el.bossFill.style.width = (frac * 100).toFixed(1) + '%'; }
+  }
+  ringArrow(a) {
+    const el = this.el.ringArrow;
+    if (!a) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    el.classList.toggle('on', a.on);
+    el.style.transform = `translate(${a.x - 22}px, ${a.y - 22}px)` + (a.on ? '' : ` rotate(${a.rot}rad)`);
   }
   reticle(x, y, show) {
     const r = this.el.reticle;

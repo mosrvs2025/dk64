@@ -64,9 +64,16 @@ export function buildWorld(G, quality) {
   }
   G.B = B;
   const gy = (x, z) => H(x, z);
+  const beamGeo = new THREE.CylinderGeometry(0.25, 0.9, 1, 12, 1, true); beamGeo.translate(0, 0.5, 0);
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0x3ad8ff, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
   const grapple = (x, y, z, requires) => {
     const g = makeGrapplePoint(); g.position.set(x, y, z); scene.add(g);
-    L.grapples.push({ x, y, z, mesh: g, requires });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    const top = 60; beam.scale.set(1, top, 1); beam.position.y = -0.6 - (y - H(x, z)) ; beam.scale.y = top + (y - H(x, z));
+    beam.visible = false; g.add(beam);
+    const gp = { x, y, z, mesh: g, requires, beam };
+    L.grapples.push(gp);
+    return gp;
   };
   const relic = (id, name, x, y, z, hidden = false) => {
     const m = makeRelic(); m.position.set(x, y, z); m.visible = !hidden; scene.add(m);
@@ -432,6 +439,24 @@ export function buildWorld(G, quality) {
   B(ex + 2, PLATEAU_Y, ez - 10, 3, 1.2, 2, 0xd8c8a0);
   L.blueprint = { x: ex + 2, y: PLATEAU_Y + 2.6, z: ez - 10, taken: false };
   sign(ex + 8, ez - 2, 'ANCIENT RUINS — a blueprint for a Grapple Hook sits on the altar ahead.');
+  // Hook training: pillar with a ring right next to the altar
+  {
+    const HX = -53, HZ = -181;
+    B(HX, PLATEAU_Y - 0.5, HZ, 3.4, 10, 3.4, 0xd8c8a0);
+    L.tutorialRing = grapple(HX - 2.6, PLATEAU_Y + 13.5, HZ + 0.5);
+    chest(HX, HZ, PLATEAU_Y + 9.5);
+    // coin arc showing the swing path from the altar to the ring
+    const ax = ex + 2, az = ez - 10;
+    for (let i = 1; i <= 7; i++) {
+      const t = i / 8;
+      L.coins.push({ x: ax + (HX - 2.6 - ax) * t, y: PLATEAU_Y + 2 + Math.sin(t * Math.PI * 0.5) * 11, z: az + (HZ + 0.5 - az) * t });
+    }
+    // second hop onward toward the temple
+    B(HX + 16, PLATEAU_Y - 0.5, HZ - 6, 3.4, 13, 3.4, 0xc8b48a);
+    grapple(HX + 13.4, PLATEAU_Y + 16.5, HZ - 5.5);
+    for (let i = 0; i < 5; i++) L.coins.push({ x: HX + 16, y: PLATEAU_Y + 14 + i * 0.01, z: HZ - 6 + (i - 2) * 0.8 });
+    sign(HX - 4, HZ + 6, 'HOOK STONE: face the blue ring and press X / Right-click / the hook button. Ride it to the top!');
+  }
 
   // Columns / scenery
   for (let i = 0; i < 30; i++) {

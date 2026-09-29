@@ -29,7 +29,14 @@
   #boss { top: 60px; left: 50%; transform: translateX(-50%); width: min(80vw, 420px); display: none; text-align: center; font-weight: bold; }
   #bossBar { height: 14px; background: #300; border: 2px solid #000; border-radius: 8px; overflow: hidden; margin-top: 4px; }
   #bossFill { height: 100%; background: linear-gradient(#ff6a4a, #c8201a); width: 100%; transition: width .2s; }
-  #reticle { top: 0; left: 0; width: 44px; height: 44px; border: 3px solid #3ad8ff; border-radius: 50%; display: none; box-shadow: 0 0 10px #3ad8ff; }
+  #reticle { top: 0; left: 0; width: 44px; height: 44px; border: 3px solid #3ad8ff; border-radius: 50%; display: none; box-shadow: 0 0 14px #3ad8ff, inset 0 0 8px #3ad8ff; animation: spin 1.2s linear infinite; }
+  #reticle span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 6px); font-weight: 900; color: #fff; background: #1a6a9a; border-radius: 6px; padding: 0 6px; font-size: 14px; animation: none; }
+  @keyframes spin { 50% { transform-origin: center; } }
+  #ringArrow { top: 0; left: 0; width: 44px; height: 44px; display: none; color: #3ad8ff; font-size: 34px; line-height: 44px; text-align: center; filter: drop-shadow(0 0 6px #3ad8ff); }
+  #ringArrow .hook { display: none; font-size: 26px; }
+  #ringArrow.on .arr { display: none; } #ringArrow.on .hook { display: inline; animation: bob 1s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-8px); } }
+  #btnSpec.hot { background: rgba(58,216,255,.85); animation: pulse .7s infinite; }
   #help { bottom: 10px; left: 12px; font-size: 13px; opacity: .75; }
   body.touch #help { display: none; }
 
@@ -47,6 +54,8 @@
   .controls { display: grid; grid-template-columns: auto auto; gap: 4px 14px; text-align: left; margin: 10px auto; width: max-content; font-size: 15px; }
   .controls b { color: var(--gold); }
   .touchonly { display: none; } body.touch .touchonly { display: block; } body.touch .desktoponly { display: none; }
+  #map { width: min(300px, 70vw, 42vh); aspect-ratio: 1; border-radius: 12px; border: 2px solid rgba(255,210,58,.6); display: block; margin: 0 auto 8px; }
+  [hidden] { display: none !important; }
   .shopitem { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(0,0,0,.3); padding: 10px 14px; border-radius: 10px; margin: 8px 0; text-align: left; }
 
   /* Touch controls */
@@ -86,7 +95,8 @@
 <div id="toast" class="hud"></div>
 <div id="prompt" class="hud"></div>
 <div id="boss" class="hud"><div id="bossName"></div><div id="bossBar"><div id="bossFill"></div></div></div>
-<div id="reticle" class="hud"></div>
+<div id="reticle" class="hud"><span class="desktoponly">X</span><span class="touchonly">🪝</span></div>
+<div id="ringArrow" class="hud"><span class="arr">➤</span><span class="hook">🪝</span></div>
 <div id="help" class="hud">WASD move · Space jump · Shift sprint · Click/Z attack (air = ground pound) · Right-click/X grapple/dash · E use/lift · Q transform · Esc pause</div>
 
 <div id="touchUI">
@@ -116,17 +126,19 @@
     </div>
     <div class="touchonly"><p>Left thumb: move · Drag right side: camera<br/>Buttons: Jump, Attack (in air = Ground Pound), Special, Use</p></div>
     <button class="btn" id="startBtn">PLAY</button>
+    <button class="btn alt" id="newGameBtn" hidden>New game</button>
   </div>
 </div>
 
 <div id="pause" class="overlay hidden">
   <div class="panel">
     <h2>PAUSED</h2>
+    <canvas id="map" width="300" height="300" aria-label="Island map"></canvas>
     <div id="pauseStats"></div>
     <button class="btn" id="resumeBtn">Resume</button>
     <button class="btn alt" id="qualityBtn">Quality: High</button>
     <button class="btn alt" id="muteBtn">Sound: On</button>
-    <button class="btn alt" id="restartBtn">Restart island</button>
+    <button class="btn alt" id="restartBtn">Erase save &amp; restart</button>
   </div>
 </div>
 

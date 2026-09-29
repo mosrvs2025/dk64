@@ -1,7 +1,8 @@
 // The hero: movement, abilities, transformation, combat.
 import * as THREE from 'three';
 import { H, waterLevelAt, isLava } from './terrain.js';
-import { makeHero, makeFrogForm } from './models.js';
+import { makeFrogForm } from './models.js';
+import { makeKong, animateKong } from './kong.js';
 
 const angLerp = (a, b, t) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * Math.min(1, t);
 
@@ -13,7 +14,7 @@ const FORMS = {
 export class Player {
   constructor(G) {
     this.G = G;
-    this.heroMesh = makeHero(); this.frogMesh = makeFrogForm();
+    this.heroMesh = makeKong(); this.frogMesh = makeFrogForm();
     this.mesh = new THREE.Group(); this.mesh.add(this.heroMesh, this.frogMesh);
     this.frogMesh.visible = false;
     G.scene.add(this.mesh);
@@ -320,31 +321,16 @@ export class Player {
     const sq = this.squash;
     this.mesh.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
     if (this.form === 'hero') {
-      const u = this.heroMesh.userData;
-      const run = this.grounded ? Math.min(1, speed / 9) : 0;
-      this.runPhase = (this.runPhase || 0) + dt * (4 + speed * 1.1);
-      const s = Math.sin(this.runPhase);
-      u.legL.rotation.x = s * 0.9 * run; u.legR.rotation.x = -s * 0.9 * run;
-      u.armL.rotation.x = -s * 0.9 * run; u.armR.rotation.x = s * 0.9 * run;
-      u.armL.rotation.z = 0; u.armR.rotation.z = 0;
-      u.body.position.y = Math.abs(s) * 0.12 * run;
-      u.body.rotation.x = run * 0.15;
-      u.body.rotation.y = 0;
-      if (!this.grounded) {
-        u.armL.rotation.z = -1.2; u.armR.rotation.z = 1.2;
-        u.legL.rotation.x = 0.4; u.legR.rotation.x = -0.2;
-      }
-      if (this.swimming) { u.body.rotation.x = 1.1; u.armL.rotation.x = -2 + s; u.armR.rotation.x = -2 - s; }
-      if (this.attackT > 0) {
-        const arm = this.combo === 1 ? u.armL : u.armR;
-        arm.rotation.x = -1.6; u.body.rotation.y = this.combo === 1 ? 0.4 : -0.4;
-        if (this.combo === 2) { u.armL.rotation.x = -1.6; u.armR.rotation.x = -1.6; }
-      }
-      if (this.slamming) { u.body.rotation.x = this.slamHang > 0 ? -6.28 * (0.18 - this.slamHang) / 0.18 : 0.5; u.armL.rotation.z = -2.5; u.armR.rotation.z = 2.5; }
-      if (this.flip) { this.flip += dt * 14; u.body.rotation.x = -this.flip; if (this.flip > 6.28) this.flip = 0; }
-      if (this.carrying) { u.armL.rotation.x = u.armR.rotation.x = -3; u.armL.rotation.z = u.armR.rotation.z = 0; }
-      if (this.grapple) { u.armR.rotation.x = -2.8; u.armL.rotation.x = 0.6; }
-      if (this.dashT > 0) u.body.rotation.x = 0.7;
+      this.landT = Math.max(0, (this.landT || 0) - dt);
+      if (this.flip) { this.flip += dt * 14; if (this.flip > 6.28) this.flip = 0; }
+      const span = this.combo === 2 ? 0.42 : 0.3;
+      animateKong(this.heroMesh.userData.rig, {
+        dt, t: this.t, speed: this.grounded ? speed : 0, grounded: this.grounded, vy: this.vy,
+        attack: this.attackT > 0 ? 1 - this.attackT / span : -1, combo: this.combo,
+        slamming: this.slamming, carrying: !!this.carrying, grapple: !!this.grapple, swimming: this.swimming,
+        dash: this.dashT > 0, flip: this.flip || (this.slamming && this.slamHang > 0 ? 6.28 * (0.18 - this.slamHang) / 0.18 : 0),
+        landing: this.landT > 0 ? (this.landT / 0.15) * 0.18 : 0,
+      });
     } else {
       const u = this.frogMesh.userData;
       u.body.rotation.x = this.grounded ? 0 : -Math.max(-0.6, Math.min(0.6, this.vy * 0.04));

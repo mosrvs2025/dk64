@@ -10,13 +10,13 @@ export function mat(color, opts = {}) {
   return matCache.get(key);
 }
 function part(geo, color, x = 0, y = 0, z = 0, opts) {
-  const m = new THREE.Mesh(geo, mat(color, opts));
+  const m = new THREE.Mesh(geo, mat(color, { flatShading: false, ...(opts || {}) }));
   m.position.set(x, y, z);
   m.castShadow = true;
   return m;
 }
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-const sph = (r, s = 10) => new THREE.SphereGeometry(r, s, Math.max(6, s - 2));
+const sph = (r, s = 10) => new THREE.SphereGeometry(r, Math.max(16, s), Math.max(12, s - 2));
 const cyl = (a, b, h, s = 8) => new THREE.CylinderGeometry(a, b, h, s);
 
 export function makeHero() {

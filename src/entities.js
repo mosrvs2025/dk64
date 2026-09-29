@@ -126,7 +126,9 @@ class Enemy {
     this.vx = dx / d * 9; this.vz = dz / d * 9; this.vy = 6;
     this.stun = 0.5;
     this.G.sfx.play('hit');
+    this.G.hitStop = Math.max(this.G.hitStop || 0, kind === 'punch' || kind === 'slam' ? 0.065 : 0.03);
     this.G.fx.burst(this.x, this.y + this.h * 0.6, this.z, 0xffffff, 8, 6, 0.25, 0.4);
+    this.G.fx.burst(this.x, this.y + this.h * 0.6, this.z, 0xffd23a, 5, 9, 0.18, 0.25, 0);
     if (this.hp <= 0) this.die();
     return true;
   }

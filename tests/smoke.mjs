@@ -22,7 +22,7 @@ async function scenario(name, fn, opts = {}) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('favicon')) errors.push(m.text()); });
-  await page.goto(`http://localhost:${PORT}/`);
+  await page.goto(`http://localhost:${PORT}/?fresh`);
   await page.waitForFunction(() => window.game, null, { timeout: 90000 });
   await page.evaluate(() => { window.game.start(); });
   await page.evaluate(botSrc);
@@ -77,7 +77,11 @@ await scenario('first minute: coins + fight + watchtower relic', async (p) => E(
   // climb the tower: platforms at heights 1.5,3,5,7,9 then pillar top 11
   g.teleport(-16 + 3, null, -12 + 3.4 + 2.5);
   const route = [[-13, -8.6], [-12.8, -12], [-16, -15.2], [-19.2, -12], [-16, -8.8], [-16, -12]];
-  for (const [x, z] of route) bot.hopTo(x, z);
+  for (let attempt = 0; attempt < 2 && !bot.relic(1).taken; attempt++) {
+    g.teleport(-16 + 3, null, -12 + 3.4 + 2.5); bot.step(10);
+    for (const [x, z] of route) bot.hopTo(x, z);
+    bot.walkTo(-16, -12, { tol: 0.4, max: 60, jumpWhenStuck: false });
+  }
   const r = bot.relic(1);
   return { ok: coins >= 5 && !grunt.alive && r.taken, coins, gruntDead: !grunt.alive, relic: r.taken, y: P.y, time: g.G.time.toFixed(1) };
 }));
@@ -311,6 +315,27 @@ await scenario('spire: seal needs 8 relics, then climb to Crown -> victory', asy
   bot.step(10);
   return { ok: blocked && sealBroken && g.G.won && fails <= 3, blocked, sealBroken, won: g.G.won, fails, platforms: plats.length };
 }));
+
+await scenario('hook onboarding: tutorial ring is targeted right after pickup and leads to a secret', async (p) => E(p, () => {
+  const { P, g } = bot;
+  g.teleport(-66, null, -167); bot.step(5);
+  bot.walkTo(-66, -172, { tol: 0.8, max: 200 });
+  bot.step(3);
+  const targeted = g.G.grappleTarget === g.L.tutorialRing;
+  const secrets0 = P.secrets;
+  bot.press('special');
+  for (let i = 0; i < 200 && P.secrets === secrets0; i++) bot.step(1);
+  return { ok: P.has.grapple && targeted && P.secrets > secrets0, grapple: P.has.grapple, targeted, secrets: P.secrets };
+}));
+
+await scenario('save: progress survives a reload (Continue)', async (p) => {
+  await p.evaluate(() => { const { P, g } = bot; const r = bot.relic(1); g.teleport(r.x, r.y - 0.9, r.z); bot.step(3); P.coins += 25; g.G.save(); });
+  await p.goto(`http://localhost:${PORT}/`);
+  await p.waitForFunction(() => window.game, null, { timeout: 90000 });
+  const r = await p.evaluate(() => ({ relics: window.game.player.relics, btn: document.getElementById('startBtn').textContent, taken: window.game.L.relics[0].taken }));
+  await p.evaluate(() => localStorage.clear());
+  return { ok: r.relics === 1 && r.taken && r.btn === 'CONTINUE', ...r };
+});
 
 await scenario('mobile: touch UI visible and joystick moves player', async (p) => {
   const vis = await E(p, () => getComputedStyle(document.getElementById('btnJump')).display !== 'none');
