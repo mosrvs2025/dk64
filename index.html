@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦍</text></svg>" />
+<meta name="theme-color" content="#1a3a5a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Project DK64 — Kong Island</title>
+<style>
+  :root { --gold: #ffd23a; --ink: #1a1208; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0e1a24; font-family: 'Trebuchet MS', system-ui, sans-serif; color: #fff; user-select: none; -webkit-user-select: none; touch-action: none; }
+  canvas { display: block; width: 100vw; height: 100vh; height: 100dvh; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 0 #000, 0 0 6px #000; }
+  #topbar { top: max(10px, env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-weight: bold; font-size: 20px; }
+  #hearts { color: #ff4a5a; letter-spacing: 2px; font-size: 22px; }
+  #hearts .empty { color: #4a2a2a; }
+  .stat { display: flex; align-items: center; gap: 5px; background: rgba(0,0,0,.35); padding: 3px 10px; border-radius: 20px; }
+  .stat .ic { font-size: 18px; }
+  .pop { animation: pop .3s ease; }
+  @keyframes pop { 50% { transform: scale(1.3); } }
+  #abilities { font-size: 22px; display: flex; gap: 6px; }
+  #toast { top: 25%; left: 50%; transform: translate(-50%, -10px); max-width: min(90vw, 560px); text-align: center; font-size: 19px; background: rgba(10,20,30,.75); padding: 10px 18px; border-radius: 12px; border: 2px solid rgba(255,210,58,.6); opacity: 0; transition: opacity .25s, transform .25s; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #zone { top: 10%; left: 50%; transform: translateX(-50%); font-size: 38px; font-weight: 900; color: var(--gold); letter-spacing: 2px; opacity: 0; transition: opacity .6s; white-space: nowrap; }
+  #zone.show { opacity: 1; }
+  #prompt { bottom: 22%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,.6); padding: 6px 14px; border-radius: 8px; font-size: 17px; display: none; white-space: nowrap; }
+  #boss { top: 60px; left: 50%; transform: translateX(-50%); width: min(80vw, 420px); display: none; text-align: center; font-weight: bold; }
+  #bossBar { height: 14px; background: #300; border: 2px solid #000; border-radius: 8px; overflow: hidden; margin-top: 4px; }
+  #bossFill { height: 100%; background: linear-gradient(#ff6a4a, #c8201a); width: 100%; transition: width .2s; }
+  #reticle { top: 0; left: 0; width: 44px; height: 44px; border: 3px solid #3ad8ff; border-radius: 50%; display: none; box-shadow: 0 0 10px #3ad8ff; }
+  #help { bottom: 10px; left: 12px; font-size: 13px; opacity: .75; }
+  body.touch #help { display: none; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(8,14,22,.78); z-index: 20; padding: 16px; }
+  .overlay.hidden { display: none; }
+  .panel { background: linear-gradient(#2a4a3a, #1a2a22); border: 3px solid var(--gold); border-radius: 16px; padding: 22px; max-width: 560px; width: 100%; text-align: center; box-shadow: 0 10px 40px #000; max-height: 92vh; overflow: auto; }
+  .panel h1 { margin: 0 0 6px; font-size: clamp(30px, 7vw, 52px); color: var(--gold); text-shadow: 0 4px 0 #6a3a00; letter-spacing: 1px; }
+  .panel h2 { margin: 0 0 10px; color: var(--gold); }
+  .panel p { line-height: 1.45; }
+  .btn { pointer-events: auto; display: inline-block; margin: 6px; padding: 12px 22px; font-size: 18px; font-weight: bold; border-radius: 12px; border: none; background: var(--gold); color: var(--ink); cursor: pointer; box-shadow: 0 4px 0 #8a6a00; font-family: inherit; }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #8a6a00; }
+  .btn.alt { background: #8ab8d8; box-shadow: 0 4px 0 #3a6a8a; }
+  .btn:disabled { opacity: .45; }
+  .controls { display: grid; grid-template-columns: auto auto; gap: 4px 14px; text-align: left; margin: 10px auto; width: max-content; font-size: 15px; }
+  .controls b { color: var(--gold); }
+  .touchonly { display: none; } body.touch .touchonly { display: block; } body.touch .desktoponly { display: none; }
+  .shopitem { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(0,0,0,.3); padding: 10px 14px; border-radius: 10px; margin: 8px 0; text-align: left; }
+
+  /* Touch controls */
+  #touchUI { display: none; }
+  body.touch #touchUI { display: block; }
+  #stick { position: fixed; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); display: none; pointer-events: none; z-index: 5; }
+  #knob { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: rgba(255,255,255,.55); }
+  #stickHint { position: fixed; left: 8%; bottom: 14%; width: 110px; height: 110px; border-radius: 50%; border: 2px dashed rgba(255,255,255,.25); pointer-events: none; }
+  .tbtn { position: fixed; z-index: 6; width: 68px; height: 68px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7); background: rgba(20,30,40,.45); color: #fff; font-size: 26px; font-weight: bold; display: flex; align-items: center; justify-content: center; touch-action: none; }
+  .tbtn.down { background: rgba(255,210,58,.7); color: #000; }
+  .tbtn small { font-size: 11px; position: absolute; bottom: -16px; text-shadow: 0 1px 2px #000; }
+  #btnJump { right: max(18px, env(safe-area-inset-right)); bottom: max(26px, env(safe-area-inset-bottom)); width: 86px; height: 86px; background: rgba(60,160,60,.55); }
+  #btnAtk { right: 118px; bottom: 34px; background: rgba(200,60,50,.55); }
+  #btnSpec { right: 34px; bottom: 132px; background: rgba(50,140,210,.55); }
+  #btnUse { right: 124px; bottom: 124px; width: 56px; height: 56px; font-size: 18px; opacity: .5; }
+  #btnUse.hot { opacity: 1; background: rgba(255,210,58,.6); animation: pulse 1s infinite; }
+  #btnForm { right: 196px; bottom: 60px; width: 56px; height: 56px; background: rgba(90,200,120,.5); }
+  #btnPause { top: max(10px, env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; font-size: 18px; }
+  @keyframes pulse { 50% { transform: scale(1.08); } }
+  #loading { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--gold); z-index: 30; background: #0e1a24; }
+  @media (max-height: 460px) { #zone { font-size: 26px; } #topbar { font-size: 16px; gap: 8px; } }
+</style>
+</head>
+<body>
+<div id="loading">Growing the jungle…</div>
+<canvas id="c"></canvas>
+
+<div id="topbar" class="hud">
+  <span id="hearts"></span>
+  <span class="stat"><span class="ic">🪙</span><span id="coins">0</span></span>
+  <span class="stat" title="Relics"><span class="ic">🏺</span><span id="relics">0/12</span></span>
+  <span class="stat" title="Frog DNA"><span class="ic">🧬</span><span id="dna">0/3</span></span>
+  <span class="stat" title="Secrets"><span class="ic">🗝️</span><span id="secrets">0</span></span>
+  <span id="abilities"></span>
+</div>
+<div id="zone" class="hud"></div>
+<div id="toast" class="hud"></div>
+<div id="prompt" class="hud"></div>
+<div id="boss" class="hud"><div id="bossName"></div><div id="bossBar"><div id="bossFill"></div></div></div>
+<div id="reticle" class="hud"></div>
+<div id="help" class="hud">WASD move · Space jump · Shift sprint · Click/Z attack (air = ground pound) · Right-click/X grapple/dash · E use/lift · Q transform · Esc pause</div>
+
+<div id="touchUI">
+  <div id="stickHint"></div>
+  <div id="stick"><div id="knob"></div></div>
+  <div class="tbtn" id="btnJump" data-action="jump">⤒<small>JUMP</small></div>
+  <div class="tbtn" id="btnAtk" data-action="attack">✊<small>ATTACK</small></div>
+  <div class="tbtn" id="btnSpec" data-action="special">🪝<small>SPECIAL</small></div>
+  <div class="tbtn" id="btnUse" data-action="interact">E<small>USE</small></div>
+  <div class="tbtn" id="btnForm" data-action="form" style="display:none">🐸</div>
+  <div class="tbtn" id="btnPause" data-action="pause">❚❚</div>
+</div>
+
+<div id="title" class="overlay hidden">
+  <div class="panel">
+    <h1>KONG ISLAND</h1>
+    <p>Twelve Relics are scattered across the island. Eight of them break the seal on the <b>Kong Spire</b>. The Crown waits at the top.</p>
+    <div class="controls desktoponly">
+      <b>WASD / Arrows</b><span>Move (Shift to sprint)</span>
+      <b>Mouse</b><span>Camera (click to capture)</span>
+      <b>Space</b><span>Jump</span>
+      <b>Click / Z</b><span>Punch · in air: Ground Pound</span>
+      <b>Right-click / X</b><span>Dash · Grapple (when unlocked)</span>
+      <b>E</b><span>Lift / drop / throw crates, talk</span>
+      <b>Q</b><span>Transform (when unlocked)</span>
+      <b>Gamepad</b><span>Supported</span>
+    </div>
+    <div class="touchonly"><p>Left thumb: move · Drag right side: camera<br/>Buttons: Jump, Attack (in air = Ground Pound), Special, Use</p></div>
+    <button class="btn" id="startBtn">PLAY</button>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel">
+    <h2>PAUSED</h2>
+    <div id="pauseStats"></div>
+    <button class="btn" id="resumeBtn">Resume</button>
+    <button class="btn alt" id="qualityBtn">Quality: High</button>
+    <button class="btn alt" id="muteBtn">Sound: On</button>
+    <button class="btn alt" id="restartBtn">Restart island</button>
+  </div>
+</div>
+
+<div id="shop" class="overlay hidden">
+  <div class="panel">
+    <h2>CRANKY'S CRATE CO.</h2>
+    <p>"Coins for tricks. No refunds, no crying."</p>
+    <div class="shopitem"><span><b>Double Jump</b><br/><small>Jump again in mid-air.</small></span><button class="btn" id="buyDJ">60 🪙</button></div>
+    <div class="shopitem"><span><b>Heart Container</b><br/><small>+1 max health.</small></span><button class="btn" id="buyHeart">40 🪙</button></div>
+    <button class="btn alt" id="shopClose">Leave</button>
+  </div>
+</div>
+
+<div id="win" class="overlay hidden">
+  <div class="panel">
+    <h1>👑 CROWNED!</h1>
+    <p>You conquered the Kong Spire.</p>
+    <div id="winStats"></div>
+    <button class="btn" id="winClose">Keep exploring</button>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
